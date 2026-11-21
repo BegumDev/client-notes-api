@@ -1,0 +1,50 @@
+pipeline {
+    agent { label 'docker-agent' }
+
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Build tag to deploy')
+    }
+
+    environment {
+        IMAGE_NAME = "begumdev/client-notes-api"
+    }
+
+    stages {
+        stage('Checkout & Package') {
+            steps {
+                checkout scm
+                docker.image('eclipse-temurin:21-jdk').inside('-v maven-repo:/root/.m2') {
+                    sh 'chmod +x mvnw && ./mvnw -B clean package -DskipTests'
+                }
+            }
+        }
+
+        stage('Build Release Image') {
+            steps {
+                sh "docker build -t ${IMAGE_NAME}:${params.IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+            }
+        }
+
+        stage('Deploy Stack') {
+            steps {
+                sh "IMAGE_TAG=${params.IMAGE_TAG} docker compose up -d --no-build"
+            }
+        }
+
+        stage('Smoke Verification') {
+            steps {
+                sh '''
+                    echo "Verifying /q/health/ready on port 8085..."
+                    for i in $(seq 1 15); do
+                        if curl -sf http://localhost:8085/q/health/ready; then
+                            echo "API is healthy!"
+                            exit 0
+                        fi
+                        sleep 2
+                    done
+                    exit 1
+                '''
+            }
+        }
+    }
+}

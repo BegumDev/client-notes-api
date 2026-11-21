@@ -1,0 +1,60 @@
+pipeline {
+    agent {
+        docker {
+            image 'eclipse-temurin:21-jdk'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -v maven-repo:/root/.m2'
+        }
+    }
+
+    environment {
+        IMAGE_NAME = "begumdev/client-notes-api"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'chmod +x mvnw && ./mvnw -B clean package -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh './mvnw -B test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Package Image') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // Use host Docker CLI if available inside container, or stash artifact for CD
+                    stash name: 'quarkus-app', includes: 'target/quarkus-app/**,Dockerfile,compose.yaml'
+                }
+            }
+        }
+
+        stage('Trigger CD') {
+            when {
+                branch 'main'
+            }
+            steps {
+                build job: 'client-notes-cd',
+                      parameters: [string(name: 'IMAGE_TAG', value: "${env.BUILD_NUMBER}")],
+                      wait: false
+            }
+        }
+    }
+}
