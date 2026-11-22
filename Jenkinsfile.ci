@@ -3,7 +3,6 @@ pipeline {
         docker {
             image 'maven:3.9.9-eclipse-temurin-21'
             label 'docker-agent'
-            args '-v maven-repo:/tmp/.m2 -e MAVEN_CONFIG=/tmp/.m2'
         }
     }
 
@@ -20,13 +19,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn -B -Dmaven.repo.local=/tmp/.m2/repository clean package -DskipTests'
+                sh 'mvn -B -Dmaven.repo.local=.m2/repository clean package -DskipTests'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn -B -Dmaven.repo.local=/tmp/.m2/repository test'
+                sh 'mvn -B -Dmaven.repo.local=.m2/repository test'
             }
             post {
                 always {
