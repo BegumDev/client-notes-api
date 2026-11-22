@@ -3,6 +3,7 @@ pipeline {
         docker {
             image 'maven:3.9.9-eclipse-temurin-21'
             label 'docker-agent'
+            args '-v /var/run/docker.sock:/var/run/docker.sock --group-add 1001 --network host'
         }
     }
 
