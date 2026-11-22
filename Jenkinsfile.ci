@@ -2,14 +2,15 @@ pipeline {
     agent {
         docker {
             image 'eclipse-temurin:21-jdk'
-            args '-v /var/run/docker.sock:/var/run/docker.sock -v maven-repo:/root/.m2'
+            label 'docker-agent'
+            args '-v maven-repo:/root/.m2'
         }
     }
 
     environment {
         IMAGE_NAME = "begumdev/client-notes-api"
     }
-
+¬
     stages {
         stage('Checkout') {
             steps {
@@ -29,26 +30,27 @@ pipeline {
             }
             post {
                 always {
-                    junit 'target/surefire-reports/*.xml'
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
                 }
             }
         }
 
-        stage('Package Image') {
+        stage('Package Artifacts') {
             when {
-                branch 'main'
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main'
+                }
             }
             steps {
-                script {
-                    // Use host Docker CLI if available inside container, or stash artifact for CD
-                    stash name: 'quarkus-app', includes: 'target/quarkus-app/**,Dockerfile,compose.yaml'
-                }
+                archiveArtifacts artifacts: 'target/quarkus-app/**,Dockerfile,compose.yaml', fingerprint: true
             }
         }
 
         stage('Trigger CD') {
             when {
-                branch 'main'
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main'
+                }
             }
             steps {
                 build job: 'client-notes-cd',
