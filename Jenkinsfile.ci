@@ -10,7 +10,7 @@ pipeline {
     environment {
         IMAGE_NAME = "begumdev/client-notes-api"
     }
-¬
+
     stages {
         stage('Checkout') {
             steps {
