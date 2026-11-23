@@ -1,52 +1,74 @@
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.9.9-eclipse-temurin-21'
-            label 'docker-agent'
-            args '-v /var/run/docker.sock:/var/run/docker.sock --group-add 1001 -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal -e TESTCONTAINERS_RYUK_DISABLED=true'
-        }
-    }
+    agent none
 
     environment {
         IMAGE_NAME = "begumdev/client-notes-api"
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
+        stage('Build & Test') {
+            agent {
+                docker {
+                    image 'maven:3.9.9-eclipse-temurin-21'
+                    label 'docker-agent'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock --group-add 1001 -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal -e TESTCONTAINERS_RYUK_DISABLED=true'
+                }
             }
-        }
+            stages {
+                stage('Checkout') {
+                    steps {
+                        checkout scm
+                    }
+                }
 
-        stage('Build') {
-            steps {
-                sh 'mvn -B -Dmaven.repo.local=.m2/repository clean package -DskipTests'
-            }
-        }
+                stage('Build') {
+                    steps {
+                        sh 'mvn -B -Dmaven.repo.local=.m2/repository clean package -DskipTests'
+                    }
+                }
 
-        stage('Test') {
-            steps {
-                sh 'mvn -B -Dmaven.repo.local=.m2/repository test'
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                stage('Test') {
+                    steps {
+                        sh 'mvn -B -Dmaven.repo.local=.m2/repository test'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                        }
+                    }
                 }
             }
         }
 
-        stage('Package Artifacts') {
+        stage('Build & Push Docker Image') {
+            agent {
+                label 'docker-agent'
+            }
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main'
                 }
             }
             steps {
-                archiveArtifacts artifacts: 'target/quarkus-app/**,Dockerfile,compose.yaml', fingerprint: true
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                        docker build \
+                          -t ${IMAGE_NAME}:${env.BUILD_NUMBER} \
+                          -t ${IMAGE_NAME}:latest \
+                          .
+                        docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}
+                        docker push ${IMAGE_NAME}:latest
+                        docker logout
+                    """
+                }
             }
         }
 
         stage('Trigger CD') {
+            agent {
+                label 'docker-agent'
+            }
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main'

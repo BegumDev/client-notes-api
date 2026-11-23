@@ -12,23 +12,15 @@ pipeline {
     }
 
     stages {
-        stage('Fetch CI Artifacts') {
+        stage('Pull Image from Docker Hub') {
             steps {
-                copyArtifacts(
-                    projectName: 'client-notes-ci',
-                    selector: lastSuccessful()
-                )
-            }
-        }
-
-        stage('Build & Tag Docker Image') {
-            steps {
-                sh """
-                    docker build \
-                      -t ${IMAGE_NAME}:${params.IMAGE_TAG} \
-                      -t ${IMAGE_NAME}:latest \
-                      .
-                """
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                        docker pull ${IMAGE_NAME}:${params.IMAGE_TAG}
+                        docker logout
+                    """
+                }
             }
         }
 
