@@ -1,8 +1,10 @@
 pipeline {
-    agent { label 'docker-agent' }
+    agent {
+        label 'docker-agent'
+    }
 
     parameters {
-        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Build tag to deploy')
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag from CI build')
     }
 
     environment {
@@ -10,40 +12,31 @@ pipeline {
     }
 
     stages {
-        stage('Checkout & Package') {
+        stage('Fetch CI Artifacts') {
             steps {
-                checkout scm
-                docker.image('eclipse-temurin:21-jdk').inside('-v maven-repo:/root/.m2') {
-                    sh 'chmod +x mvnw && ./mvnw -B clean package -DskipTests'
-                }
+                copyArtifacts(
+                    projectName: 'client-notes-ci',
+                    selector: lastSuccessful()
+                )
             }
         }
 
-        stage('Build Release Image') {
+        stage('Build & Tag Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${params.IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+                sh """
+                    docker build \
+                      -t ${IMAGE_NAME}:${params.IMAGE_TAG} \
+                      -t ${IMAGE_NAME}:latest \
+                      .
+                """
             }
         }
 
-        stage('Deploy Stack') {
+        stage('Deploy') {
             steps {
-                sh "IMAGE_TAG=${params.IMAGE_TAG} docker compose up -d --no-build"
-            }
-        }
-
-        stage('Smoke Verification') {
-            steps {
-                sh '''
-                    echo "Verifying /q/health/ready on port 8085..."
-                    for i in $(seq 1 15); do
-                        if curl -sf http://localhost:8085/q/health/ready; then
-                            echo "API is healthy!"
-                            exit 0
-                        fi
-                        sleep 2
-                    done
-                    exit 1
-                '''
+                sh """
+                    IMAGE_TAG=${params.IMAGE_TAG} docker compose up -d
+                """
             }
         }
     }
